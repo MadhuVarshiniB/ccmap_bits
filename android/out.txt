@@ -1,0 +1,71 @@
+> Task :gradle:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :gradle:compileKotlin UP-TO-DATE
+> Task :gradle:compileJava NO-SOURCE
+> Task :gradle:compileGroovy NO-SOURCE
+> Task :gradle:pluginDescriptors UP-TO-DATE
+> Task :gradle:processResources UP-TO-DATE
+> Task :gradle:classes UP-TO-DATE
+> Task :gradle:jar UP-TO-DATE
+
+> Task :app:signingReport
+Variant: debug
+Config: debug
+Store: C:\Users\B Madhuvarshini\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 3B:2B:2B:8F:24:0F:52:45:D3:DD:FB:F3:D4:6D:B6:69
+SHA1: 8B:2F:49:B3:E3:B9:76:D4:67:DD:04:11:06:A9:D5:7E:E9:43:50:DE
+SHA-256: 08:87:18:10:67:A4:19:A1:D8:45:4E:3A:E6:0D:64:0A:EB:2E:2A:D9:15:A8:71:91:D2:C2:89:FF:77:3C:80:9A
+Valid until: Sunday, October 17, 2055
+----------
+Variant: release
+Config: debug
+Store: C:\Users\B Madhuvarshini\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 3B:2B:2B:8F:24:0F:52:45:D3:DD:FB:F3:D4:6D:B6:69
+SHA1: 8B:2F:49:B3:E3:B9:76:D4:67:DD:04:11:06:A9:D5:7E:E9:43:50:DE
+SHA-256: 08:87:18:10:67:A4:19:A1:D8:45:4E:3A:E6:0D:64:0A:EB:2E:2A:D9:15:A8:71:91:D2:C2:89:FF:77:3C:80:9A
+Valid until: Sunday, October 17, 2055
+----------
+Variant: profile
+Config: debug
+Store: C:\Users\B Madhuvarshini\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 3B:2B:2B:8F:24:0F:52:45:D3:DD:FB:F3:D4:6D:B6:69
+SHA1: 8B:2F:49:B3:E3:B9:76:D4:67:DD:04:11:06:A9:D5:7E:E9:43:50:DE
+SHA-256: 08:87:18:10:67:A4:19:A1:D8:45:4E:3A:E6:0D:64:0A:EB:2E:2A:D9:15:A8:71:91:D2:C2:89:FF:77:3C:80:9A
+Valid until: Sunday, October 17, 2055
+----------
+Variant: debugAndroidTest
+Config: debug
+Store: C:\Users\B Madhuvarshini\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 3B:2B:2B:8F:24:0F:52:45:D3:DD:FB:F3:D4:6D:B6:69
+SHA1: 8B:2F:49:B3:E3:B9:76:D4:67:DD:04:11:06:A9:D5:7E:E9:43:50:DE
+SHA-256: 08:87:18:10:67:A4:19:A1:D8:45:4E:3A:E6:0D:64:0A:EB:2E:2A:D9:15:A8:71:91:D2:C2:89:FF:77:3C:80:9A
+Valid until: Sunday, October 17, 2055
+----------
+
+> Task :flutter_plugin_android_lifecycle:signingReport
+Variant: debugAndroidTest
+Config: debug
+Store: C:\Users\B Madhuvarshini\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 3B:2B:2B:8F:24:0F:52:45:D3:DD:FB:F3:D4:6D:B6:69
+SHA1: 8B:2F:49:B3:E3:B9:76:D4:67:DD:04:11:06:A9:D5:7E:E9:43:50:DE
+SHA-256: 08:87:18:10:67:A4:19:A1:D8:45:4E:3A:E6:0D:64:0A:EB:2E:2A:D9:15:A8:71:91:D2:C2:89:FF:77:3C:80:9A
+Valid until: Sunday, October 17, 2055
+----------
+
+> Task :google_maps_flutter_android:signingReport
+Variant: debugAndroidTest
+Config: debug
+Store: C:\Users\B Madhuvarshini\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 3B:2B:2B:8F:24:0F:52:45:D3:DD:FB:F3:D4:6D:B6:69
+SHA1: 8B:2F:49:B3:E3:B9:76:D4:67:DD:04:11:06:A9:D5:7E:E9:43:50:DE
+SHA-256: 08:87:18:10:67:A4:19:A1:D8:45:4E:3A:E6:0D:64:0A:EB:2E:2A:D9:15:A8:71:91:D2:C2:89:FF:77:3C:80:9A
+Valid until: Sunday, October 17, 2055
+----------
+
+BUILD SUCCESSFUL in 1s
+7 actionable tasks: 3 executed, 4 up-to-date
