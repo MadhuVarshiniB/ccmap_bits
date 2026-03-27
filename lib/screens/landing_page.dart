@@ -20,10 +20,12 @@ class _LandingPageState extends State<LandingPage> {
   // State Variables
   List<Map<String, dynamic>> _stations = [];
   List<Map<String, dynamic>> _availableCycles = [];
+  Map<String, int> _stationCycleCounts = {};
   LatLng? _currentLocation;
   
   bool _isLoading = true;
   bool _isLoadingCycles = false;
+  bool _isMapReady = false;
   
   String? _selectedStartId;
   String? _selectedEndId;
@@ -36,8 +38,34 @@ class _LandingPageState extends State<LandingPage> {
   }
 
   Future<void> _initializeData() async {
-    await _fetchStations();
-    await _fetchLocation();
+    _fetchStations();
+    _fetchLocation();
+    _fetchCycleCounts();
+  }
+
+  Future<void> _fetchCycleCounts() async {
+    try {
+      final data = await _supabase
+          .from('cycles')
+          .select('current_station_id')
+          .eq('status', 'available');
+
+      final counts = <String, int>{};
+      for (var row in data) {
+        final stationId = row['current_station_id']?.toString();
+        if (stationId != null) {
+          counts[stationId] = (counts[stationId] ?? 0) + 1;
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _stationCycleCounts = counts;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching cycle counts: $e');
+    }
   }
 
   // 1. Fetch stations from the VIEW (simplifies lat/lng parsing)
@@ -88,14 +116,34 @@ class _LandingPageState extends State<LandingPage> {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
+      
+      if (permission == LocationPermission.deniedForever || permission == LocationPermission.denied) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Location permissions are denied.')),
+        );
+        return;
+      }
 
-      final pos = await Geolocator.getCurrentPosition();
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
       final loc = LatLng(pos.latitude, pos.longitude);
 
+      if (!mounted) return;
       setState(() => _currentLocation = loc);
-      _mapController.move(loc, 14.0);
+      
+      if (_isMapReady) {
+        _mapController.move(loc, 14.0);
+      }
     } catch (e) {
       debugPrint('Location error: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to retrieve location')),
+      );
     }
   }
 
@@ -143,20 +191,26 @@ class _LandingPageState extends State<LandingPage> {
     final markers = <Marker>[];
 
     for (final station in _stations) {
+      final stationId = station['id'].toString();
+      final cycleCount = _stationCycleCounts[stationId] ?? 0;
+
       markers.add(
         Marker(
           point: LatLng(station['lat'], station['lng']),
           width: 50,
           height: 50,
-          child: GestureDetector(
-            onTap: () {
-              setState(() => _selectedStartId = station['id'].toString());
-              _fetchCyclesForStation(station['id'].toString());
-            },
-            child: Icon(
-              Icons.location_on, 
-              color: _selectedStartId == station['id'].toString() ? Colors.orange : Colors.green, 
-              size: 40
+          child: Tooltip(
+            message: '${station['name']}\n$cycleCount cycles available',
+            child: GestureDetector(
+              onTap: () {
+                setState(() => _selectedStartId = stationId);
+                _fetchCyclesForStation(stationId);
+              },
+              child: Icon(
+                Icons.location_on, 
+                color: _selectedStartId == stationId ? Colors.orange : Colors.green, 
+                size: 40
+              ),
             ),
           ),
         ),
@@ -190,14 +244,33 @@ class _LandingPageState extends State<LandingPage> {
         children: [
           FlutterMap(
             mapController: _mapController,
-            options: const MapOptions(
-              initialCenter: LatLng(17.4486, 78.3782),
+            options: MapOptions(
+              initialCenter: const LatLng(17.4486, 78.3782),
               initialZoom: 13,
+              onMapReady: () {
+                _isMapReady = true;
+                if (_currentLocation != null) {
+                  _mapController.move(_currentLocation!, 14.0);
+                }
+              },
             ),
             children: [
               TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'),
               MarkerLayer(markers: _buildMarkers()),
             ],
+          ),
+          
+          // Location Center Button
+          Positioned(
+            bottom: 340,
+            right: 16,
+            child: FloatingActionButton(
+              heroTag: 'my_location_fab',
+              backgroundColor: Colors.white,
+              mini: true,
+              onPressed: _fetchLocation,
+              child: const Icon(Icons.my_location, color: Colors.blue),
+            ),
           ),
           
           // Booking UI
@@ -236,9 +309,15 @@ class _LandingPageState extends State<LandingPage> {
                   // 2. Cycle Selection (Replaces the manual TextField)
                   DropdownButtonFormField<String>(
                     value: _selectedCycleId,
-                    hint: Text(_isLoadingCycles ? 'Searching cycles...' : 'Select Available Cycle'),
-                    disabledHint: const Text('Pick a station first'),
-                    items: _availableCycles.map((c) => DropdownMenuItem(
+                    hint: const Text('Select Available Cycle'),
+                    disabledHint: Text(
+                      _selectedStartId == null 
+                          ? 'Pick a station first' 
+                          : _isLoadingCycles 
+                              ? 'Searching cycles...' 
+                              : 'No cycles available currently',
+                    ),
+                    items: _availableCycles.isEmpty ? null : _availableCycles.map((c) => DropdownMenuItem(
                       value: c['id'].toString(),
                       child: Text('${c['model_name']} (${c['battery_level']}% Battery)'),
                     )).toList(),
