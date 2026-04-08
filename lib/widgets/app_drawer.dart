@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../screens/profile_page.dart';
 import '../screens/past_rides_page.dart';
 import '../screens/wallet_page.dart';
+import '../screens/admin/admin_page.dart';
 
 class AppDrawer extends StatefulWidget {
   const AppDrawer({super.key});
@@ -18,6 +19,7 @@ class _AppDrawerState extends State<AppDrawer> {
   String _displayEmail = '';
   String _displayPhone = '';
   String _displayGender = '';
+  String _userRole = 'user';
 
   @override
   void initState() {
@@ -34,7 +36,7 @@ class _AppDrawerState extends State<AppDrawer> {
 
       final data = await _supabase
           .from('profiles')
-          .select('full_name, phone_number, gender')
+          .select('full_name, phone_number, gender, role')
           .eq('id', user.id)
           .single();
           
@@ -43,6 +45,7 @@ class _AppDrawerState extends State<AppDrawer> {
         _displayEmail = email;
         _displayPhone = data['phone_number']?.toString() ?? '';
         _displayGender = data['gender']?.toString() ?? '';
+        _userRole = data['role']?.toString() ?? 'user';
       });
     } catch (e) {
       debugPrint('Error loading drawer profile: $e');
@@ -143,6 +146,17 @@ class _AppDrawerState extends State<AppDrawer> {
                   MaterialPageRoute(builder: (_) => const WalletPage()));
             },
           ),
+          if (_userRole == 'admin') ...[
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.admin_panel_settings, color: Colors.purple),
+              title: const Text('Admin Panel', style: TextStyle(color: Colors.purple, fontWeight: FontWeight.bold)),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminPage()));
+              },
+            ),
+          ],
           const Divider(),
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.red),

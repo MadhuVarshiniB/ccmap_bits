@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'screens/auth/auth_gate.dart';
-
-void main() async {
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+Future main() async {
   WidgetsFlutterBinding.ensureInitialized(); // Required for async main
-
+  await dotenv.load();
   await Supabase.initialize(
-    url: "https://ypsnbqcssryflpurgzzy.supabase.co",
-    anonKey: "sb_publishable_Lcppv0mvsfIiNFmwiexEPA_AqDNzQcL",
+    url: dotenv.env['SUPABASE_URL'] ?? '',
+    anonKey: dotenv.env['SUPABASE_KEY'] ?? '',
     // Adding PKCE flow is best practice for Web redirects
     authOptions: const FlutterAuthClientOptions(
       authFlowType: AuthFlowType.pkce,

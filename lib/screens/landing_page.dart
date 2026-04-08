@@ -5,6 +5,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../widgets/app_drawer.dart';
 import 'ride_details_page.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
+// import 'package:barcode_scanner/scanbot_barcode_sdk.dart';
 
 class LandingPage extends StatefulWidget {
   const LandingPage({super.key});
@@ -15,6 +17,16 @@ class LandingPage extends StatefulWidget {
 
 class _LandingPageState extends State<LandingPage> {
   final MapController _mapController = MapController();
+    final MobileScannerController controller = MobileScannerController(
+    // cameraResolution: size,
+    // detectionSpeed: detectionSpeed,
+    // detectionTimeoutMs: detectionTimeout,
+    // formats: selectedFormats,
+    // returnImage: returnImage,
+    torchEnabled: true,
+    // invertImage: invertImage,
+    // autoZoom: autoZoom,
+  );
   final SupabaseClient _supabase = Supabase.instance.client;
 
   // State Variables
@@ -234,7 +246,7 @@ class _LandingPageState extends State<LandingPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('EcoRide Hyderabad'),
+        title: const Text('CCMAP - The E-Bike Sharing Platform'),
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _initializeData)
         ],
@@ -290,7 +302,7 @@ class _LandingPageState extends State<LandingPage> {
                   const Text('Book Your Ride', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
                   
-                  // 1. Station Selection
+                  //Station Selection
                   DropdownButtonFormField<String>(
                     value: _selectedStartId,
                     hint: const Text('Select Pickup Station'),
@@ -306,7 +318,7 @@ class _LandingPageState extends State<LandingPage> {
                   ),
                   const SizedBox(height: 12),
                   
-                  // 2. Cycle Selection (Replaces the manual TextField)
+                  // Cycle Selection
                   DropdownButtonFormField<String>(
                     value: _selectedCycleId,
                     hint: const Text('Select Available Cycle'),
@@ -326,7 +338,7 @@ class _LandingPageState extends State<LandingPage> {
                   ),
                   const SizedBox(height: 12),
                   
-                  // 3. Destination Station (Optional)
+                  //Destination Station
                   DropdownButtonFormField<String?>(
                     value: _selectedEndId,
                     hint: const Text('Select Destination Station (Optional)'),
@@ -346,7 +358,7 @@ class _LandingPageState extends State<LandingPage> {
                     onPressed: (_selectedStartId == null || _selectedCycleId == null) ? null : _handleStartRide,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
-                      disabledBackgroundColor: Colors.grey[300],
+                      disabledBackgroundColor: const Color.fromARGB(255, 161, 161, 161),
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
                     ),

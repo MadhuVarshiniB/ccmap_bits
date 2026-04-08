@@ -19,24 +19,17 @@ class AuthService{
     String phoneNumber,
     String gender
   ) async {
-    final response = await Supabase.instance.client.auth.signUp(
+    await Supabase.instance.client.auth.signUp(
       email: email,
       password: password,
-    );
-
-    final user = response.user;
-
-    if (user != null) {
-      // This updates your 'profiles' table from the image
-      await Supabase.instance.client.from('profiles').insert({
-        'id': user.id, // Links to auth.users.id
+      data: {
         'full_name': fullName,
         'phone_number': phoneNumber,
         'gender': gender,
-        'role': 'user', // Default role
-        'wallet_balance': 0, // Initial balance
-      });
-    }
+        'role': 'user',
+        'wallet_balance': 0,
+      },
+    );
   }
 
     Future<void> signOut() async{
