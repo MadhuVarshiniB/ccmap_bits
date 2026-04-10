@@ -40,6 +40,8 @@ class _AppDrawerState extends State<AppDrawer> {
           .eq('id', user.id)
           .single();
           
+      if (!mounted) return;
+
       setState(() {
         _displayName = (data['full_name']?.toString().isNotEmpty ?? false) ? data['full_name'] : 'User';
         _displayEmail = email;

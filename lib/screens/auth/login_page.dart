@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:frontend/screens/auth/auth_service.dart';
-
+import 'package:frontend/screens/auth/otp_verification_page.dart';
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -29,36 +29,41 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  void _handleAuth() async {
+  void _handleAuth({bool usePassword = false}) async {
     final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
     final name = _nameController.text.trim();
     final phone = _phoneController.text.trim();
+    final password = _passwordController.text.trim();
 
-    if (email.isEmpty || password.isEmpty) {
+    if (email.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please fill in email and password")),
+        const SnackBar(content: Text("Please fill in email")),
       );
       return;
     }
 
     try {
       if (_isLogin) {
-        await AuthService().signInWithEmailPassword(email, password);
+        if (usePassword) {
+          if (password.isEmpty) throw "Please fill in password";
+          await AuthService().signInWithEmailPassword(email, password);
+        } else {
+          await AuthService().signInWithEmailOTP(email);
+          if (!mounted) return;
+          Navigator.push(context, MaterialPageRoute(builder: (_) => OtpVerificationPage(email: email, isSignUp: false)));
+        }
       } else {
         if (name.isEmpty || phone.isEmpty) {
           throw "Please fill in all fields to register";
         }
-        await AuthService().signUpWithEmailPassword(
+        await AuthService().signUpWithEmail(
           email,
-          password,
           name,
           phone,
           _selectedGender,
         );
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Registration successful! Check your email.")),
-        );
+        if (!mounted) return;
+        Navigator.push(context, MaterialPageRoute(builder: (_) => OtpVerificationPage(email: email, isSignUp: true)));
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -133,16 +138,18 @@ class _LoginPageState extends State<LoginPage> {
               ),
               const SizedBox(height: 16),
 
-              TextField(
-                controller: _passwordController,
-                obscureText: true,
-                decoration: InputDecoration(
-                  labelText: 'Password',
-                  prefixIcon: const Icon(Icons.lock),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              if (_isLogin) ...[
+                TextField(
+                  controller: _passwordController,
+                  obscureText: true,
+                  decoration: InputDecoration(
+                    labelText: 'Password (for Password Login)',
+                    prefixIcon: const Icon(Icons.lock),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
+                const SizedBox(height: 16),
+              ],
 
               if (!_isLogin) ...[
                 DropdownButtonFormField<String>(
@@ -171,16 +178,38 @@ class _LoginPageState extends State<LoginPage> {
 
               const SizedBox(height: 24),
 
-              ElevatedButton(
-                onPressed: _handleAuth,
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
+              if (_isLogin) ...[
+                ElevatedButton(
+                  onPressed: () => _handleAuth(usePassword: true),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Login with Password', style: TextStyle(fontSize: 16)),
                 ),
-                child: Text(_isLogin ? 'Login' : 'Sign Up', style: const TextStyle(fontSize: 16)),
-              ),
+                const SizedBox(height: 16),
+                OutlinedButton(
+                  onPressed: () => _handleAuth(usePassword: false),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('Login with OTP', style: TextStyle(fontSize: 16, color: Colors.green)),
+                ),
+              ] else ...[
+                ElevatedButton(
+                  onPressed: () => _handleAuth(usePassword: false),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Sign Up with OTP', style: TextStyle(fontSize: 16)),
+                ),
+              ],
 
               TextButton(
                 onPressed: () => setState(() => _isLogin = !_isLogin),

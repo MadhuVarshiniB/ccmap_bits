@@ -56,5 +56,11 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>This app needs camera access to scan cycle QR codes to unlock them.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>This app needs location access to track your ride and find nearby stations.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>This app needs location access to track your ride in the background.</string>
 </dict>
 </plist>

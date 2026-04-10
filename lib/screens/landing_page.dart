@@ -1,11 +1,14 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:simple_barcode_scanner/simple_barcode_scanner.dart';
 import '../widgets/app_drawer.dart';
 import 'ride_details_page.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
+import '../utils/routing_service.dart';
+import '../utils/nfc_service.dart';
 // import 'package:barcode_scanner/scanbot_barcode_sdk.dart';
 
 class LandingPage extends StatefulWidget {
@@ -17,16 +20,6 @@ class LandingPage extends StatefulWidget {
 
 class _LandingPageState extends State<LandingPage> {
   final MapController _mapController = MapController();
-    final MobileScannerController controller = MobileScannerController(
-    // cameraResolution: size,
-    // detectionSpeed: detectionSpeed,
-    // detectionTimeoutMs: detectionTimeout,
-    // formats: selectedFormats,
-    // returnImage: returnImage,
-    torchEnabled: true,
-    // invertImage: invertImage,
-    // autoZoom: autoZoom,
-  );
   final SupabaseClient _supabase = Supabase.instance.client;
 
   // State Variables
@@ -42,6 +35,7 @@ class _LandingPageState extends State<LandingPage> {
   String? _selectedStartId;
   String? _selectedEndId;
   String? _selectedCycleId;
+  List<LatLng> _currentRoute = [];
 
   @override
   void initState() {
@@ -100,10 +94,11 @@ class _LandingPageState extends State<LandingPage> {
 
   // 2. Fetch cycles available at the chosen station
   Future<void> _fetchCyclesForStation(String stationId) async {
-    setState(() {
-      _isLoadingCycles = true;
-      _selectedCycleId = null; 
-    });
+    if (mounted) {
+      setState(() {
+        _isLoadingCycles = true;
+      });
+    }
 
     try {
       final data = await _supabase
@@ -112,13 +107,56 @@ class _LandingPageState extends State<LandingPage> {
           .eq('current_station_id', stationId)
           .eq('status', 'available');
 
-      setState(() {
-        _availableCycles = List<Map<String, dynamic>>.from(data);
-        _isLoadingCycles = false;
-      });
+      if (mounted) {
+        setState(() {
+          _availableCycles = List<Map<String, dynamic>>.from(data);
+          _isLoadingCycles = false;
+        });
+      }
     } catch (e) {
       debugPrint('Error fetching cycles: $e');
-      setState(() => _isLoadingCycles = false);
+      if (mounted) setState(() => _isLoadingCycles = false);
+    }
+  }
+
+  Future<void> _handleScanResult(String? res) async {
+    if (res == null || res == '-1') return;
+    
+    setState(() => _isLoading = true);
+    try {
+      // 1. Find which station this cycle belongs to
+      final cycleData = await _supabase
+          .from('cycles')
+          .select('current_station_id')
+          .eq('id', res)
+          .maybeSingle();
+      
+      if (cycleData == null) {
+        throw 'Cycle not found in database.';
+      }
+
+      final stationId = cycleData['current_station_id']?.toString();
+      if (stationId == null) {
+        throw 'Cycle is not currently assigned to any station.';
+      }
+
+      // 2. Update state to match this cycle
+      setState(() => _selectedStartId = stationId);
+      await _fetchCyclesForStation(stationId);
+      
+      if (_availableCycles.any((c) => c['id'].toString() == res)) {
+        setState(() => _selectedCycleId = res);
+      } else {
+        throw 'Cycle is found but not currently available for riding.';
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Scan Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -180,6 +218,18 @@ class _LandingPageState extends State<LandingPage> {
         throw 'Insufficient balance. Please top up your wallet.';
       }
 
+      // --- NFC Physical Verification ---
+      // Force user to tap the phone against the bike to physically change the tag data to "unlocked"
+      bool nfcWriteSuccess = await NfcService.verifyAndWriteTag(context, _selectedCycleId!, 'unlocked');
+      
+      if (!nfcWriteSuccess) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('NFC verification failed. Hold phone against the bike tag to unlock.')),
+        );
+        return; // Abort ride start
+      }
+
       if (!mounted) return;
       
       Navigator.push(
@@ -196,6 +246,26 @@ class _LandingPageState extends State<LandingPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
       );
+    }
+  }
+
+  Future<void> _updateRoute() async {
+    if (_selectedStartId != null && _selectedEndId != null) {
+      final startStation = _stations.firstWhere((s) => s['id'].toString() == _selectedStartId);
+      final endStation = _stations.firstWhere((s) => s['id'].toString() == _selectedEndId);
+      
+      final route = await RoutingService.getRoute(
+        LatLng(startStation['lat'], startStation['lng']),
+        LatLng(endStation['lat'], endStation['lng']),
+      );
+      
+      if (mounted) {
+        setState(() => _currentRoute = route);
+      }
+    } else {
+      if (mounted && _currentRoute.isNotEmpty) {
+        setState(() => _currentRoute = []);
+      }
     }
   }
 
@@ -217,6 +287,7 @@ class _LandingPageState extends State<LandingPage> {
               onTap: () {
                 setState(() => _selectedStartId = stationId);
                 _fetchCyclesForStation(stationId);
+                _updateRoute();
               },
               child: Icon(
                 Icons.location_on, 
@@ -235,7 +306,24 @@ class _LandingPageState extends State<LandingPage> {
           point: _currentLocation!,
           width: 40,
           height: 40,
-          child: const Icon(Icons.my_location, color: Colors.blue, size: 30),
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.blue.withOpacity(0.25),
+            ),
+            child: Center(
+              child: Container(
+                width: 14,
+                height: 14,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.blue,
+                  border: Border.all(color: Colors.white, width: 2),
+                  boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 4)],
+                ),
+              ),
+            ),
+          ),
         ),
       );
     }
@@ -268,6 +356,16 @@ class _LandingPageState extends State<LandingPage> {
             ),
             children: [
               TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'),
+              if (_currentRoute.isNotEmpty)
+                PolylineLayer(
+                  polylines: <Polyline<Object>>[
+                    Polyline<Object>(
+                      points: _currentRoute,
+                      strokeWidth: 5,
+                      color: Colors.blue.withOpacity(0.7),
+                    ),
+                  ],
+                ),
               MarkerLayer(markers: _buildMarkers()),
             ],
           ),
@@ -319,22 +417,74 @@ class _LandingPageState extends State<LandingPage> {
                   const SizedBox(height: 12),
                   
                   // Cycle Selection
-                  DropdownButtonFormField<String>(
-                    value: _selectedCycleId,
-                    hint: const Text('Select Available Cycle'),
-                    disabledHint: Text(
-                      _selectedStartId == null 
-                          ? 'Pick a station first' 
-                          : _isLoadingCycles 
-                              ? 'Searching cycles...' 
-                              : 'No cycles available currently',
-                    ),
-                    items: _availableCycles.isEmpty ? null : _availableCycles.map((c) => DropdownMenuItem(
-                      value: c['id'].toString(),
-                      child: Text('${c['model_name']} (${c['battery_level']}% Battery)'),
-                    )).toList(),
-                    onChanged: (val) => setState(() => _selectedCycleId = val),
-                    decoration: const InputDecoration(prefixIcon: Icon(Icons.pedal_bike, color: Colors.green)),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: _selectedCycleId,
+                          hint: const Text('Select Available Cycle'),
+                          disabledHint: Text(
+                            _selectedStartId == null 
+                                ? 'Pick a station first' 
+                                : _isLoadingCycles 
+                                    ? 'Searching cycles...' 
+                                    : 'No cycles available currently',
+                          ),
+                          items: _availableCycles.isEmpty ? null : _availableCycles.map((c) => DropdownMenuItem(
+                            value: c['id'].toString(),
+                            child: Text('${c['model_name']} (${c['battery_level']}%)'),
+                          )).toList(),
+                          onChanged: (val) => setState(() => _selectedCycleId = val),
+                          decoration: const InputDecoration(prefixIcon: Icon(Icons.pedal_bike, color: Colors.green)),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                       ElevatedButton(
+                        onPressed: () async {
+                          String? res;
+                          if (kIsWeb) {
+                            showDialog(
+                              context: context,
+                              barrierDismissible: false,
+                              builder: (_) => const AlertDialog(
+                                content: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    CircularProgressIndicator(),
+                                    SizedBox(height: 16),
+                                    Text('Web Mode: Identifying cycle via camera...'),
+                                  ],
+                                ),
+                              ),
+                            );
+
+                            // Auto-pick a cycle for demo purposes on web
+                            await Future.delayed(const Duration(seconds: 2));
+                            if (mounted) Navigator.pop(context);
+                            
+                            // Let's try to find a real cycle ID from the first station
+                            final demoData = await _supabase.from('cycles').select('id').eq('status', 'available').limit(1).maybeSingle();
+                            res = demoData?['id']?.toString();
+                          } else {
+                            res = await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const SimpleBarcodeScannerPage(),
+                              ),
+                            );
+                          }
+                          _handleScanResult(res);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          shape: const CircleBorder(),
+                          padding: const EdgeInsets.all(14),
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Icon(Icons.qr_code_scanner),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 12),
                   
@@ -349,7 +499,10 @@ class _LandingPageState extends State<LandingPage> {
                         child: Text(s['name']),
                       )),
                     ],
-                    onChanged: (val) => setState(() => _selectedEndId = val),
+                    onChanged: (val) {
+                      setState(() => _selectedEndId = val);
+                      _updateRoute();
+                    },
                     decoration: const InputDecoration(prefixIcon: Icon(Icons.flag, color: Colors.blue)),
                   ),
                   const SizedBox(height: 20),

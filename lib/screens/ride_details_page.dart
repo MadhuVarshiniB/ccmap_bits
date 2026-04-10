@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'payment_mock_page.dart';
+import '../utils/nfc_service.dart';
 
 class RideDetailsPage extends StatefulWidget {
   final String? startStationId;
@@ -28,7 +29,8 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
   final _supabase = Supabase.instance.client;
 
   Timer? _clockTimer;
-  Timer? _gpsTimer;
+  Timer? _syncTimer;
+  StreamSubscription<Position>? _positionStream;
   int _elapsedSeconds = 0;
   String? _rideId;
   bool _isSyncing = false;
@@ -109,9 +111,19 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
     );
   }
 
-  // 3. Process Payment & Sync DB (Atomic & Optimized)
   Future<void> _processFinalPayment() async {
     if (_rideId == null) return;
+    
+    // --- NFC Physical Verification ---
+    bool nfcWriteSuccess = await NfcService.verifyAndWriteTag(context, widget.cycleId ?? '', 'locked');
+    if (!nfcWriteSuccess) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to lock bike. Hold phone against the bike tag to lock it.')),
+      );
+      return;
+    }
+
     setState(() => _isSyncing = true);
 
     // Show Loading Overlay
@@ -158,7 +170,8 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
       }
 
       _clockTimer?.cancel();
-      _gpsTimer?.cancel();
+      _syncTimer?.cancel();
+      _positionStream?.cancel();
 
       if (mounted) Navigator.pop(context); // Close loading dialog
 
@@ -191,15 +204,32 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
 
   Future<void> _initGps() async {
     await Geolocator.requestPermission();
-    _pollGps();
-    _gpsTimer = Timer.periodic(const Duration(seconds: 3), (_) => _pollGps());
+    
+    _positionStream = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 5, // Granular 5-meter updates
+      ),
+    ).listen((Position position) {
+      if (mounted) _onNewPosition(position);
+    });
+
+    // Heartbeat sync every 15s even if stationary
+    _syncTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (_currentPos != null) _syncLocationToDb(_currentPos!);
+    });
   }
 
-  Future<void> _pollGps() async {
+  Future<void> _syncLocationToDb(LatLng pos) async {
+    if (_rideId == null) return;
     try {
-      final pos = await Geolocator.getCurrentPosition(locationSettings: const LocationSettings(accuracy: LocationAccuracy.high));
-      if (mounted) _onNewPosition(pos);
-    } catch (_) {}
+      await _supabase.from('rides').update({
+        'current_lat': pos.latitude,
+        'current_lng': pos.longitude,
+      }).eq('id', _rideId!);
+    } catch (e) {
+      debugPrint('Sync error: $e');
+    }
   }
 
   void _onNewPosition(Position pos) {
@@ -207,14 +237,16 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
     setState(() {
       if (_lastPos != null) {
         final dist = _haversine(_lastPos!, newPos);
-        if (dist > 0.005) { // Filter jitter (5 meters)
-          _totalDistanceKm += dist;
-          _trail.add(newPos);
-        }
+        _totalDistanceKm += dist;
+        _trail.add(newPos);
+      } else {
+        _trail.add(newPos);
       }
       _currentPos = newPos;
       _lastPos = newPos;
     });
+    
+    _syncLocationToDb(newPos);
     _mapController.move(newPos, _mapController.camera.zoom);
   }
 
@@ -237,7 +269,8 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
   @override
   void dispose() {
     _clockTimer?.cancel();
-    _gpsTimer?.cancel();
+    _syncTimer?.cancel();
+    _positionStream?.cancel();
     super.dispose();
   }
 
@@ -254,8 +287,35 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
               options: MapOptions(initialCenter: _currentPos ?? const LatLng(17.4486, 78.3782), initialZoom: 16),
               children: [
                 TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'),
-                PolylineLayer(polylines: [Polyline(points: _trail, strokeWidth: 5, color: Colors.blue)]),
-                if (_currentPos != null) MarkerLayer(markers: [Marker(point: _currentPos!, child: const Icon(Icons.directions_bike, color: Colors.blue, size: 35))]),
+                PolylineLayer(polylines: <Polyline<Object>>[Polyline<Object>(points: _trail, strokeWidth: 5, color: Colors.blue)]),
+                if (_currentPos != null) 
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: _currentPos!, 
+                        width: 40,
+                        height: 40,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.blue.withOpacity(0.25),
+                          ),
+                          child: Center(
+                            child: Container(
+                              width: 14,
+                              height: 14,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.blue,
+                                border: Border.all(color: Colors.white, width: 2),
+                                boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 4)],
+                              ),
+                            ),
+                          ),
+                        ),
+                      )
+                    ]
+                  ),
               ],
             ),
           ),

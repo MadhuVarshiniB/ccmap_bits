@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/screens/auth/auth_service.dart';
 import '../landing_page.dart';
 
 class OtpVerificationPage extends StatefulWidget {
-  final String phoneNumber;
+  final String email;
+  final bool isSignUp;
 
-  const OtpVerificationPage({super.key, required this.phoneNumber});
+  const OtpVerificationPage({super.key, required this.email, required this.isSignUp});
 
   @override
   State<OtpVerificationPage> createState() => _OtpVerificationPageState();
@@ -12,16 +14,35 @@ class OtpVerificationPage extends StatefulWidget {
 
 class _OtpVerificationPageState extends State<OtpVerificationPage> {
   final TextEditingController _otpController = TextEditingController();
+  bool _isLoading = false;
 
-  void _verifyOtp() {
-    // Simplified validation for MVP mock purposes:
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (context) => const LandingPage()),
-      (route) => false,
-    );
+ void _verifyOtp() async {
+    final token = _otpController.text.trim();
+    if (token.length < 6) return;
+
+    setState(() => _isLoading = true);
+    try {
+      await AuthService().verifyEmailOTP(
+        widget.email, 
+        token, 
+        isSignUp: widget.isSignUp
+      );
+
+      if (!mounted) return;
+
+      // IMPORTANT: Don't push LandingPage. 
+      // Just pop back to the root. AuthGate will see the session 
+      // and swap LoginPage for LandingPage automatically.
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Verification Failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
-
   @override
   void dispose() {
     _otpController.dispose();
@@ -44,7 +65,7 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Text(
-                'Verify Phone Number',
+                'Verify Email',
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
@@ -52,43 +73,30 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Enter the 4-digit code sent to ${widget.phoneNumber}',
+                'Enter the 6-digit code sent to ${widget.email}',
                 style: const TextStyle(
                   fontSize: 16,
                   color: Colors.grey,
                 ),
               ),
               const SizedBox(height: 48),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: List.generate(4, (index) {
-                  return SizedBox(
-                    width: 60,
-                    child: TextField(
-                      controller: index == 0 ? _otpController : null,
-                      textAlign: TextAlign.center,
-                      keyboardType: TextInputType.number,
-                      maxLength: 1,
-                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                      decoration: InputDecoration(
-                        counterText: "",
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      onChanged: (value) {
-                         // Basic mockup, not fully implementing focus traversal for brevity
-                         if (value.isNotEmpty && index < 3) {
-                           FocusScope.of(context).nextFocus();
-                         }
-                      },
-                    ),
-                  );
-                }),
+              // Using a simple TextField for a 6-digit OTP
+              TextField(
+                controller: _otpController,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 24, letterSpacing: 8.0, fontWeight: FontWeight.bold),
+                decoration: InputDecoration(
+                  counterText: "",
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
               ),
               const SizedBox(height: 48),
               ElevatedButton(
-                onPressed: _verifyOtp,
+                onPressed: _isLoading ? null : _verifyOtp,
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
@@ -97,7 +105,9 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
                   backgroundColor: Colors.green,
                   foregroundColor: Colors.white,
                 ),
-                child: const Text('Verify and Proceed', style: TextStyle(fontSize: 16)),
+                child: _isLoading 
+                  ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Text('Verify and Proceed', style: TextStyle(fontSize: 16)),
               ),
             ],
           ),
