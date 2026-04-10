@@ -1,6 +1,4 @@
-# CCMAP - E-Bike Sharing Platform Developer Guide
-
-Welcome to the CCMAP codebase! This document provides a comprehensive overview of how this Flutter + Supabase application operates, designed to help newly onboarded developers quickly orient themselves, understand the architecture, and contribute effectively.
+# CCMAP - E-Bike Sharing Platform Documentation
 
 ---
 
