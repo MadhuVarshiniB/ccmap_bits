@@ -122,7 +122,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    'Wallet: ₹${_walletBalance.toStringAsFixed(2)}',
+                    'Wallet: Rs. ${_walletBalance.toStringAsFixed(2)}',
                     style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 16),
                   ),
                 ),

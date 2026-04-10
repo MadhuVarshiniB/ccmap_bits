@@ -77,13 +77,13 @@ class _WalletPageState extends State<WalletPage> {
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('Enter amount to top up (₹):'),
+                  const Text('Enter amount to top up (Rs.):'),
                   const SizedBox(height: 16),
                   TextField(
                     controller: amountController,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     decoration: const InputDecoration(
-                      prefixText: '₹ ',
+                      prefixText: 'Rs. ',
                       border: OutlineInputBorder(),
                     ),
                   ),
@@ -170,7 +170,7 @@ class _WalletPageState extends State<WalletPage> {
                       children: [
                         const Text('Current Balance', style: TextStyle(color: Colors.white70, fontSize: 16)),
                         const SizedBox(height: 8),
-                        Text('₹ ${_walletBalance.toStringAsFixed(2)}', style: const TextStyle(color: Colors.white, fontSize: 40, fontWeight: FontWeight.bold)),
+                        Text('Rs. ${_walletBalance.toStringAsFixed(2)}', style: const TextStyle(color: Colors.white, fontSize: 40, fontWeight: FontWeight.bold)),
                       ],
                     ),
                   ),
@@ -191,7 +191,7 @@ class _WalletPageState extends State<WalletPage> {
                                 leading: const CircleAvatar(backgroundColor: Colors.redAccent, child: Icon(Icons.electric_bike, color: Colors.white)),
                                 title: const Text('Ride Payment'),
                                 subtitle: Text(_formatDate(dateIso.toString())),
-                                trailing: Text('-₹ ${amount.toStringAsFixed(2)}', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                                trailing: Text('-Rs. ${amount.toStringAsFixed(2)}', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                               );
                             },
                           ),

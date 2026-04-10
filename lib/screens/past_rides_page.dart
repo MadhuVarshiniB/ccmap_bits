@@ -113,7 +113,7 @@ class _PastRidesPageState extends State<PastRidesPage> {
                                   style: const TextStyle(fontWeight: FontWeight.bold),
                                 ),
                                 Text(
-                                  '₹ ${fareAmount.toStringAsFixed(2)}',
+                                  'Rs. ${fareAmount.toStringAsFixed(2)}',
                                   style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
                                 ),
                               ],

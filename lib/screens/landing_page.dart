@@ -213,9 +213,9 @@ class _LandingPageState extends State<LandingPage> {
           .eq('id', user!.id)
           .single();
 
-      // Basic safety check: don't start ride if wallet is empty
-      if ((profile['wallet_balance'] ?? 0) <= 0) {
-        throw 'Insufficient balance. Please top up your wallet.';
+      // Basic safety check: don't start ride if wallet doesn't have at least the base fare
+      if ((profile['wallet_balance'] ?? 0) < 10.0) {
+        throw 'Insufficient balance. Minimum Rs. 10 (Base Fare) required to unlock.';
       }
 
       // --- NFC Physical Verification ---
@@ -506,6 +506,29 @@ class _LandingPageState extends State<LandingPage> {
                     decoration: const InputDecoration(prefixIcon: Icon(Icons.flag, color: Colors.blue)),
                   ),
                   const SizedBox(height: 20),
+                  
+                  // RFID Warning
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.amber[50],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.amber[200]!),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.contactless_outlined, color: Colors.amber), // Contactless icon is better for RFID
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Important: Keep your phone on the RFID tag while clicking unlock until the ride starts.',
+                            style: TextStyle(fontSize: 13, color: Colors.amber[900]),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   
                   ElevatedButton(
                     onPressed: (_selectedStartId == null || _selectedCycleId == null) ? null : _handleStartRide,

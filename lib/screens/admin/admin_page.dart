@@ -291,7 +291,7 @@ class _ManageCyclesTabState extends State<ManageCyclesTab> {
 
   Future<void> _fetchStationsForDropdown() async {
     try {
-      final res = await _supabase.from('stations').select('id, name').order('name');
+      final res = await _supabase.from('stations').select('id, name, location').order('name');
       if (mounted) setState(() => _stations = List<Map<String, dynamic>>.from(res));
     } catch (e) {
       debugPrint('Error fetching stations for dropdown: $e');
@@ -399,11 +399,16 @@ class _ManageCyclesTabState extends State<ManageCyclesTab> {
                     setStateBuilder(() => isSaving = true);
                     try {
                       // 1. Initial Insert (Status: Provisioning)
+                      // We fetch the station's location to satisfy the NOT NULL constraint on cycles
+                      final station = _stations.firstWhere((s) => s['id'].toString() == selectedStationId);
+                      final stationLocation = station['location'];
+
                       final insertedRow = await _supabase.from('cycles').insert({
                         'model_name': modelController.text.trim(),
                         'status': 'provisioning',
                         'battery_level': int.tryParse(batteryController.text.trim()) ?? 100,
                         'current_station_id': selectedStationId,
+                        'location': stationLocation,
                       }).select().single();
                       
                       final newCycleId = insertedRow['id'].toString();
