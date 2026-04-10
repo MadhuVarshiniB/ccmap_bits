@@ -107,16 +107,3 @@ If you need to change how a user books a ride, look here:
 - **Provisioning Flow:** When an Admin adds a new cycle, the system inserts a temporary stub into Supabase to acquire a `UUID`. It then forces the admin to hold their phone against a blank RFID sticker, encoding the new UUID onto it natively. 
 
 ---
-
-## 4. How to Add Features (Developer FAQ)
-
-**Q: Where do I change the color scheme or global icons?**
-Right now, styling is modularly defined within each page. For global overhauls, you should inject a `ThemeData` block into the `MaterialApp` widget located in `lib/main.dart`. 
-
-**Q: If I add a new Supabase Table, where do I call it?**
-Directly inside the `State` classes of your Flutter views. Currently, the app uses direct client calls via `final _supabase = Supabase.instance.client;`. For scaling, you may consider moving these into dedicated repository files (e.g., `lib/repositories/cycle_repo.dart`).
-
-**Q: How do we upgrade to a real Payment Gateway from the Wallet system?**
-1. Sign up for Razorpay, Stripe, or LemonSqueezy.
-2. Build a `WalletTopUpPage` that uses their Flutter SDKs to capture payment.
-3. Upon a successful SDK callback, run a Supabase Update query adding the captured funds to the user's `profiles.wallet_balance`.
