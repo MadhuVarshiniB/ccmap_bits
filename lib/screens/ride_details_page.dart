@@ -40,6 +40,8 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
   String? _userName;
   String? _userEmail;
   bool _isSyncing = false;
+  String? _oldCyclePin;
+  String? _newCyclePin;
 
   // GPS Tracking
   LatLng? _currentPos;
@@ -58,8 +60,23 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
     super.initState();
     _startRideInDatabase();
     _fetchStationNames();
+    _fetchCyclePin();
     _startClock();
     _initGps();
+  }
+
+  Future<void> _fetchCyclePin() async {
+    if (widget.cycleId == null) return;
+    try {
+      final data = await _supabase
+          .from('cycles')
+          .select('pin')
+          .eq('id', widget.cycleId!)
+          .single();
+      setState(() => _oldCyclePin = data['pin']?.toString());
+    } catch (e) {
+      debugPrint('Error fetching cycle pin: $e');
+    }
   }
 
   Future<void> _fetchStationNames() async {
@@ -67,16 +84,28 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
       final user = _supabase.auth.currentUser;
       if (user != null) {
         _userEmail = user.email;
-        final profile = await _supabase.from('profiles').select('full_name').eq('id', user.id).single();
+        final profile = await _supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', user.id)
+            .single();
         setState(() => _userName = profile['full_name']);
       }
 
       if (widget.startStationId != null) {
-        final startData = await _supabase.from('stations').select('name').eq('id', widget.startStationId!).single();
+        final startData = await _supabase
+            .from('stations')
+            .select('name')
+            .eq('id', widget.startStationId!)
+            .single();
         setState(() => _startStationName = startData['name']);
       }
       if (widget.endStationId != null) {
-        final endData = await _supabase.from('stations').select('name').eq('id', widget.endStationId!).single();
+        final endData = await _supabase
+            .from('stations')
+            .select('name')
+            .eq('id', widget.endStationId!)
+            .single();
         setState(() => _endStationName = endData['name']);
       }
     } catch (e) {
@@ -90,16 +119,55 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
       final user = _supabase.auth.currentUser;
       if (user == null) return;
 
-      final response = await _supabase.from('rides').insert({
-        'user_id': user.id,
-        'cycle_id': widget.cycleId,
-        'start_station': widget.startStationId,
-        'start_time': DateTime.now().toIso8601String(),
-        'ride_status': 'ongoing',
-        'fare_amount': _baseFare,
-      }).select().single();
+      if (widget.cycleId != null) {
+        await _supabase
+            .from('cycles')
+            .update({
+              'status': 'available',
+              'current_station_id': widget.endStationId,
+              // if (newPinPayload != null) 'pin': newPinPayload,
+            })
+            .eq('id', widget.cycleId!);
+        // newCyclePin
+      }
 
-      setState(() => _rideId = response['id']);
+      final response = await _supabase
+          .from('rides')
+          .insert({
+            'user_id': user.id,
+            'cycle_id': widget.cycleId,
+            'start_station': widget.startStationId,
+            'start_time': DateTime.now().toIso8601String(),
+            'ride_status': 'ongoing',
+            'fare_amount': _baseFare,
+          })
+          .select()
+          .single();
+
+      final data = await _supabase
+          .from('cycles')
+          .select('pin')
+          .eq('id', widget.cycleId!)
+          .single();
+
+      //     _newCyclePin=_fetchCyclePin() async {
+      //   if (widget.cycleId == null) return;
+      //   try {
+      //     final data = await _supabase
+      //         .from('cycles')
+      //         .select('pin')
+      //         .eq('id', widget.cycleId!)
+      //         .single();
+      //     setState(() => _cyclePin = data['pin']?.toString());
+      //   } catch (e) {
+      //     debugPrint('Error fetching cycle pin: $e');
+      //   }
+      // }
+
+      setState(() {
+        _rideId = response['id'];
+        _newCyclePin = data['pin']?.toString();
+      });
     } catch (e) {
       debugPrint('Error starting ride: $e');
     }
@@ -119,13 +187,24 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text('End Ride', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+              const Text(
+                'End Ride',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
               const SizedBox(height: 8),
-              Text('Total Fare: Rs. ${_currentFare.toStringAsFixed(2)}', 
-                   style: const TextStyle(fontSize: 20, color: Colors.green, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
-              
+              Text(
+                'Total Fare: Rs. ${_currentFare.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontSize: 20,
+                  color: Colors.green,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+
               const SizedBox(height: 20),
-              
+
               // Proximity Warning
               Container(
                 padding: const EdgeInsets.all(12),
@@ -141,35 +220,46 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
                     Expanded(
                       child: Text(
                         'Important: Keep phone close to the RFID tag while clicking end ride until confirmation page',
-                        style: TextStyle(fontSize: 13, color: Colors.amber[900]),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.amber[900],
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
-              
+
               const SizedBox(height: 24),
-              
+
               ElevatedButton.icon(
                 onPressed: () {
                   Navigator.pop(context);
                   _processFinalPayment();
                 },
                 icon: const Icon(Icons.lock_outline),
-                label: const Text('END RIDE & LOCK', style: TextStyle(fontWeight: FontWeight.bold)),
+                label: const Text(
+                  'END RIDE & LOCK',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
+                  ),
                 ),
               ),
-              
+
               const SizedBox(height: 12),
-              
+
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: Colors.grey),
+                ),
               ),
             ],
           ),
@@ -180,13 +270,86 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
 
   Future<void> _processFinalPayment() async {
     if (_rideId == null) return;
-    
+
     // --- NFC Physical Verification ---
-    bool nfcWriteSuccess = await NfcService.verifyAndWriteTag(context, widget.cycleId ?? '', 'locked');
+    bool nfcWriteSuccess = await NfcService.verifyAndWriteTag(
+      context,
+      widget.cycleId ?? '',
+      'locked',
+    );
+    String? newPinPayload;
+
+    if (nfcWriteSuccess) {
+      // Stop the timer and tracking immediately so the user doesn't get charged while looking at the PIN popup
+      _clockTimer?.cancel();
+      _syncTimer?.cancel();
+      _positionStream?.cancel();
+
+      // final random = Random.secure();
+      // String pin = List.generate(4, (_) => random.nextInt(10)).join();
+
+      // Store locally so it can be updated in the database inside the try-catch block
+      // _cyclePin = pin;
+      // newPinPayload = pin;
+
+      if (!mounted) return;
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
+          title: const Text('Update Cycle Lock PIN'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Please change the physical combination lock on the cycle to the new PIN:',
+              ),
+              const SizedBox(height: 16),
+              Center(
+                child: Text(
+                  _newCyclePin ?? "",
+                  style: const TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 8,
+                    color: Colors.blue,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Make sure to scramble the dials after locking to secure the cycle.',
+              ),
+            ],
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: const Text('DONE & LOCKED'),
+            ),
+          ],
+        ),
+      );
+    }
     if (!nfcWriteSuccess) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to lock bike. Hold phone against the bike tag to lock it.')),
+        const SnackBar(
+          content: Text(
+            'Failed to lock bike. Hold phone against the bike tag to lock it.',
+          ),
+        ),
       );
       return;
     }
@@ -225,32 +388,41 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
           .select('wallet_balance')
           .eq('id', user!.id)
           .single();
-      
+
       double currentBalance = (profile['wallet_balance'] ?? 0.0).toDouble();
       double finalFare = _currentFare;
       double newBalance = currentBalance - finalFare;
 
       // STEP B: Update Wallet (Allowing negative balance as requested)
-      await _supabase.from('profiles').update({
-        'wallet_balance': newBalance,
-      }).eq('id', user.id);
+      await _supabase
+          .from('profiles')
+          .update({'wallet_balance': newBalance})
+          .eq('id', user.id);
 
       // STEP C: Update Ride Record
-      await _supabase.from('rides').update({
-        'end_time': DateTime.now().toIso8601String(),
-        'end_station': widget.endStationId,
-        'distance_km': _totalDistanceKm,
-        'fare_amount': finalFare,
-        'ride_status': 'completed',
-        'payment_status': 'paid',
-      }).eq('id', _rideId!);
+      await _supabase
+          .from('rides')
+          .update({
+            'end_time': DateTime.now().toIso8601String(),
+            'end_station': widget.endStationId,
+            'distance_km': _totalDistanceKm,
+            'fare_amount': finalFare,
+            'ride_status': 'completed',
+            'payment_status': 'paid',
+          })
+          .eq('id', _rideId!);
 
       // STEP B: Update Cycle Availability
       if (widget.cycleId != null) {
-        await _supabase.from('cycles').update({
-          'status': 'available',
-          'current_station_id': widget.endStationId,
-        }).eq('id', widget.cycleId!);
+        await _supabase
+            .from('cycles')
+            .update({
+              'status': 'available',
+              'current_station_id': widget.endStationId,
+              // if (newPinPayload != null) 'pin': newPinPayload,
+            })
+            .eq('id', widget.cycleId!);
+        // newCyclePin
       }
 
       _clockTimer?.cancel();
@@ -280,7 +452,9 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
     } catch (e) {
       if (mounted) Navigator.pop(context); // Close loader
       setState(() => _isSyncing = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
@@ -294,15 +468,16 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
 
   Future<void> _initGps() async {
     await Geolocator.requestPermission();
-    
-    _positionStream = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 5, // Granular 5-meter updates
-      ),
-    ).listen((Position position) {
-      if (mounted) _onNewPosition(position);
-    });
+
+    _positionStream =
+        Geolocator.getPositionStream(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 5, // Granular 5-meter updates
+          ),
+        ).listen((Position position) {
+          if (mounted) _onNewPosition(position);
+        });
 
     // Heartbeat sync every 15s even if stationary
     _syncTimer = Timer.periodic(const Duration(seconds: 15), (_) {
@@ -313,10 +488,10 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
   Future<void> _syncLocationToDb(LatLng pos) async {
     if (_rideId == null) return;
     try {
-      await _supabase.from('rides').update({
-        'current_lat': pos.latitude,
-        'current_lng': pos.longitude,
-      }).eq('id', _rideId!);
+      await _supabase
+          .from('rides')
+          .update({'current_lat': pos.latitude, 'current_lng': pos.longitude})
+          .eq('id', _rideId!);
     } catch (e) {
       debugPrint('Sync error: $e');
     }
@@ -335,7 +510,7 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
       _currentPos = newPos;
       _lastPos = newPos;
     });
-    
+
     _syncLocationToDb(newPos);
     _mapController.move(newPos, _mapController.camera.zoom);
   }
@@ -344,7 +519,12 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
     const r = 6371.0;
     final dLat = (b.latitude - a.latitude) * pi / 180;
     final dLng = (b.longitude - a.longitude) * pi / 180;
-    final h = sin(dLat / 2) * sin(dLat / 2) + cos(a.latitude * pi / 180) * cos(b.latitude * pi / 180) * sin(dLng / 2) * sin(dLng / 2);
+    final h =
+        sin(dLat / 2) * sin(dLat / 2) +
+        cos(a.latitude * pi / 180) *
+            cos(b.latitude * pi / 180) *
+            sin(dLng / 2) *
+            sin(dLng / 2);
     return 2 * r * asin(sqrt(h));
   }
 
@@ -372,58 +552,139 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Trip in Progress'), automaticallyImplyLeading: false),
+      appBar: AppBar(
+        title: const Text('Trip in Progress'),
+        automaticallyImplyLeading: false,
+      ),
       body: Column(
         children: [
           Expanded(
             flex: 3,
-            child: FlutterMap(
-              mapController: _mapController,
-              options: MapOptions(initialCenter: _currentPos ?? const LatLng(17.4486, 78.3782), initialZoom: 16),
+            child: Stack(
               children: [
-                TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'),
-                PolylineLayer(polylines: <Polyline<Object>>[Polyline<Object>(points: _trail, strokeWidth: 5, color: Colors.blue)]),
-                if (_currentPos != null) 
-                  MarkerLayer(
-                    markers: [
-                      Marker(
-                        point: _currentPos!, 
-                        width: 40,
-                        height: 40,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.blue.withOpacity(0.25),
-                          ),
-                          child: Center(
+                FlutterMap(
+                  mapController: _mapController,
+                  options: MapOptions(
+                    initialCenter:
+                        _currentPos ?? const LatLng(17.4486, 78.3782),
+                    initialZoom: 16,
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate:
+                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    ),
+                    PolylineLayer(
+                      polylines: <Polyline<Object>>[
+                        Polyline<Object>(
+                          points: _trail,
+                          strokeWidth: 5,
+                          color: Colors.blue,
+                        ),
+                      ],
+                    ),
+                    if (_currentPos != null)
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: _currentPos!,
+                            width: 40,
+                            height: 40,
                             child: Container(
-                              width: 14,
-                              height: 14,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: Colors.blue,
-                                border: Border.all(color: Colors.white, width: 2),
-                                boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 4)],
+                                color: Colors.blue.withOpacity(0.25),
+                              ),
+                              child: Center(
+                                child: Container(
+                                  width: 14,
+                                  height: 14,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Colors.blue,
+                                    border: Border.all(
+                                      color: Colors.white,
+                                      width: 2,
+                                    ),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Colors.black38,
+                                        blurRadius: 4,
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      )
-                    ]
+                        ],
+                      ),
+                  ],
+                ),
+                if (_oldCyclePin != null)
+                  Positioned(
+                    bottom: 16,
+                    right: 16,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Colors.black26,
+                            blurRadius: 6,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            'UNLOCK PIN',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.grey,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _oldCyclePin!,
+                            style: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 6,
+                              color: Colors.blue,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
               ],
             ),
           ),
           Container(
             padding: const EdgeInsets.all(24),
-            decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+            ),
             child: Column(
               children: [
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
                     _statItem('TIME', _formattedTime),
-                    _statItem('DISTANCE', '${_totalDistanceKm.toStringAsFixed(2)} km'),
+                    _statItem(
+                      'DISTANCE',
+                      '${_totalDistanceKm.toStringAsFixed(2)} km',
+                    ),
                     _statItem('FARE', 'Rs. ${_currentFare.toStringAsFixed(1)}'),
                   ],
                 ),
@@ -433,17 +694,37 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
                   height: 55,
                   child: ElevatedButton(
                     onPressed: _rideId == null || _isSyncing ? null : _endRide,
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
-                    child: const Text('END RIDE', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                    ),
+                    child: const Text(
+                      'END RIDE',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
-                )
+                ),
               ],
             ),
-          )
+          ),
         ],
       ),
     );
   }
 
-  Widget _statItem(String label, String val) => Column(children: [Text(val, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)), Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey))]);
+  Widget _statItem(String label, String val) => Column(
+    children: [
+      Text(
+        val,
+        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+      ),
+      Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+    ],
+  );
 }
