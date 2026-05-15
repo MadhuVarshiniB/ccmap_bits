@@ -9,6 +9,7 @@ import '../widgets/app_drawer.dart';
 import 'ride_details_page.dart';
 import '../utils/routing_service.dart';
 import '../utils/nfc_service.dart';
+import '../services/app_settings.dart';
 // import 'package:barcode_scanner/scanbot_barcode_sdk.dart';
 
 class LandingPage extends StatefulWidget {
@@ -41,12 +42,45 @@ class _LandingPageState extends State<LandingPage> {
   void initState() {
     super.initState();
     _initializeData();
+    _checkAndCleanStaleRides();
   }
 
   Future<void> _initializeData() async {
     _fetchStations();
     _fetchLocation();
     _fetchCycleCounts();
+  }
+
+  /// Mark any stale ongoing/paused rides as 'cancelled' so they don't block new rides
+  Future<void> _checkAndCleanStaleRides() async {
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) return;
+
+      final staleRides = await _supabase
+          .from('rides')
+          .select('id')
+          .eq('user_id', user.id)
+          .inFilter('ride_status', ['ongoing', 'paused']);
+
+      if (staleRides.isNotEmpty && mounted) {
+        // Mark them as cancelled so they don't interfere
+        for (final ride in staleRides) {
+          await _supabase.from('rides').update({
+            'ride_status': 'cancelled',
+            'end_time': DateTime.now().toIso8601String(),
+          }).eq('id', ride['id']);
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('A previous incomplete ride was cancelled.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error cleaning stale rides: $e');
+    }
   }
 
   Future<void> _fetchCycleCounts() async {
@@ -231,6 +265,13 @@ class _LandingPageState extends State<LandingPage> {
       }
 
       if (!mounted) return;
+
+      // Mark cycle as in-use
+      await _supabase.from('cycles').update({
+        'status': 'in_use',
+      }).eq('id', _selectedCycleId!);
+
+      if (!mounted) return;
       
       Navigator.push(
         context,
@@ -238,7 +279,7 @@ class _LandingPageState extends State<LandingPage> {
           builder: (context) => RideDetailsPage(
             startStationId: _selectedStartId,
             endStationId: _selectedEndId,
-            cycleId: _selectedCycleId, // Verified parameter name
+            cycleId: _selectedCycleId,
           ),
         ),
       );
@@ -443,7 +484,7 @@ class _LandingPageState extends State<LandingPage> {
                        ElevatedButton(
                         onPressed: () async {
                           String? res;
-                          if (kIsWeb) {
+                          if (AppSettings.instance.qrDevMode) {
                             showDialog(
                               context: context,
                               barrierDismissible: false,
@@ -453,13 +494,13 @@ class _LandingPageState extends State<LandingPage> {
                                   children: [
                                     CircularProgressIndicator(),
                                     SizedBox(height: 16),
-                                    Text('Web Mode: Identifying cycle via camera...'),
+                                    Text('QR Dev Mode: Simulating cycle scan...'),
                                   ],
                                 ),
                               ),
                             );
 
-                            // Auto-pick a cycle for demo purposes on web
+                            // Auto-pick a cycle for demo purposes
                             await Future.delayed(const Duration(seconds: 2));
                             if (mounted) Navigator.pop(context);
                             

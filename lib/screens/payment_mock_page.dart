@@ -4,6 +4,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:intl/intl.dart';
+import 'landing_page.dart';
 
 class PaymentMockPage extends StatelessWidget {
   final String rideId;
@@ -15,6 +16,7 @@ class PaymentMockPage extends StatelessWidget {
   final String? endStationName;
   final String? userName;
   final String? userEmail;
+  final String? newPin;
 
   const PaymentMockPage({
     super.key,
@@ -27,6 +29,7 @@ class PaymentMockPage extends StatelessWidget {
     this.endStationName,
     this.userName,
     this.userEmail,
+    this.newPin,
   });
 
   Future<void> _downloadReceipt(BuildContext context) async {
@@ -161,6 +164,33 @@ class PaymentMockPage extends StatelessWidget {
                       _buildSummaryRow('Start Station', startStationName ?? 'Unknown'),
                       const SizedBox(height: 12),
                       _buildSummaryRow('End Station', endStationName ?? 'Unknown'),
+                      if (newPin != null) ...[
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          child: Divider(),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.blue[50],
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.blue[200]!),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.lock, color: Colors.blue),
+                              const SizedBox(width: 12),
+                              const Expanded(
+                                child: Text('New Lock PIN', style: TextStyle(fontSize: 14, color: Colors.blueGrey)),
+                              ),
+                              Text(
+                                newPin!,
+                                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 6, color: Colors.blue),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -169,7 +199,10 @@ class PaymentMockPage extends StatelessWidget {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+                    onPressed: () => Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (_) => const LandingPage()),
+                      (route) => false,
+                    ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
                       foregroundColor: Colors.white,

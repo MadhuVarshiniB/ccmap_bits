@@ -18,7 +18,7 @@ To test and develop on your local machine, follow these steps:
    - Add your Supabase project keys to the file:
      ```env
      SUPABASE_URL=https://<YOUR-PROJECT-ID>.supabase.co
-     SUPABASE_ANON_KEY=<YOUR-ANON-KEY>
+     SUPABASE_KEY=<YOUR-ANON-KEY>
      ```
 
 3. **Install Dependencies**

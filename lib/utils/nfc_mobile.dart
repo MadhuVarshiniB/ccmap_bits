@@ -155,6 +155,77 @@ class NfcMobileHandler implements NfcHandler {
     }
     return success;
   }
+
+  @override
+  Future<String?> readTag(BuildContext context) async {
+    bool isAvailable = await NfcManager.instance.isAvailable();
+    if (!isAvailable) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('NFC is not available on this device.')),
+        );
+      }
+      return null;
+    }
+
+    Completer<String?> completer = Completer<String?>();
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Hold Phone to Tag'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.nfc, size: 64, color: Colors.blue),
+            SizedBox(height: 16),
+            Text('Tap your phone against the NFC tag to read its contents.'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              NfcManager.instance.stopSession();
+              if (ctx.mounted) Navigator.pop(ctx);
+              if (!completer.isCompleted) completer.complete(null);
+            },
+            child: const Text('Cancel')
+          )
+        ],
+      )
+    );
+
+    try {
+      await NfcManager.instance.startSession(
+        pollingOptions: {NfcPollingOption.iso14443, NfcPollingOption.iso15693},
+        onDiscovered: (NfcTag tag) async {
+          Ndef? ndef = Ndef.from(tag);
+          if (ndef == null || ndef.cachedMessage == null) {
+            await NfcManager.instance.stopSession();
+            if (!completer.isCompleted) completer.complete('Empty or Unsupported Tag');
+            return;
+          }
+          
+          String payload = '';
+          for (var record in ndef.cachedMessage!.records) {
+            payload += String.fromCharCodes(record.payload);
+          }
+          
+          await NfcManager.instance.stopSession();
+          if (!completer.isCompleted) completer.complete(payload);
+        },
+      );
+    } catch (e) {
+       if (!completer.isCompleted) completer.complete('Error: $e');
+    }
+
+    String? result = await completer.future;
+    if (context.mounted) {
+      try { Navigator.pop(context); } catch (_) {}
+    }
+    return result;
+  }
 }
 
 NfcHandler getNfcHandler() => NfcMobileHandler();

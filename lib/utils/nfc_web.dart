@@ -43,6 +43,27 @@ class NfcWebHandler implements NfcHandler {
     if (context.mounted) Navigator.pop(context);
     return true; 
   }
+
+  @override
+  Future<String?> readTag(BuildContext context) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+             CircularProgressIndicator(),
+             SizedBox(height: 16),
+             Text('Web Mock: Simulating NFC Read...'),
+          ]
+        )
+      ),
+    );
+    await Future.delayed(const Duration(seconds: 2));
+    if (context.mounted) Navigator.pop(context);
+    return "id:mock-1234,status:available"; 
+  }
 }
 
 NfcHandler getNfcHandler() => NfcWebHandler();
