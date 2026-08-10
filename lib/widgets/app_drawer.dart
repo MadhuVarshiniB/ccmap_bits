@@ -4,6 +4,7 @@ import '../screens/profile_page.dart';
 import '../screens/past_rides_page.dart';
 import '../screens/wallet_page.dart';
 import '../screens/admin/admin_page.dart';
+import '../main.dart';
 
 class AppDrawer extends StatefulWidget {
   const AppDrawer({super.key});
@@ -148,6 +149,30 @@ class _AppDrawerState extends State<AppDrawer> {
                   MaterialPageRoute(builder: (_) => const WalletPage()));
             },
           ),
+
+          // ── Theme Toggle ──
+          ValueListenableBuilder<ThemeMode>(
+            valueListenable: themeNotifier,
+            builder: (context, mode, _) {
+              final isDark = mode == ThemeMode.dark;
+              return ListTile(
+                leading: Icon(
+                  isDark ? Icons.dark_mode : Icons.light_mode,
+                  color: isDark ? Colors.amber : Colors.orange,
+                ),
+                title: const Text('Theme'),
+                subtitle: Text(isDark ? 'Dark Mode' : 'Light Mode'),
+                trailing: Switch(
+                  value: isDark,
+                  activeColor: Colors.amber,
+                  onChanged: (val) {
+                    themeNotifier.value = val ? ThemeMode.dark : ThemeMode.light;
+                  },
+                ),
+              );
+            },
+          ),
+
           if (_userRole == 'admin') ...[
             const Divider(),
             ListTile(
@@ -163,7 +188,7 @@ class _AppDrawerState extends State<AppDrawer> {
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.red),
             title: const Text('Logout', style: TextStyle(color: Colors.red)),
-            onTap: () => _handleLogout(context), // <== ACTUALLY LOGS OUT TO SUPABASE
+            onTap: () => _handleLogout(context),
           ),
         ],
       ),

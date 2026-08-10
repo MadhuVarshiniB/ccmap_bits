@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'payment_mock_page.dart';
 import '../utils/nfc_service.dart';
 import '../utils/routing_service.dart';
+import '../utils/location_permission_helper.dart';
 
 class RideDetailsPage extends StatefulWidget {
   final String? startStationId;
@@ -53,6 +54,7 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
   LatLng? _currentPos;
   LatLng? _lastPos;
   double _totalDistanceKm = 0.0;
+  double _heading = 0.0; // bearing in degrees
   final List<LatLng> _trail = [];
   
   LatLng? _endPos;
@@ -174,7 +176,28 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
   // ── Pause / Resume ──
   void _togglePause() async {
     if (_isPaused) {
-      // RESUME — restart GPS tracking
+      // RESUME — require NFC tap
+      final nfcSuccess = await NfcService.verifyAndWriteTag(context, widget.cycleId ?? '', 'unlocked');
+      if (!nfcSuccess) {
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Row(children: [
+              Icon(Icons.nfc, color: Colors.blue),
+              SizedBox(width: 8),
+              Text('NFC Required'),
+            ]),
+            content: const Text(
+              'Please hold your phone against the cycle\'s NFC tag to resume your ride.',
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+            ],
+          ),
+        );
+        return;
+      }
       setState(() {
         _isPaused = false;
         _pauseStartTime = null;
@@ -189,7 +212,29 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
         }
       }
     } else {
-      // PAUSE — stop GPS tracking only, timer keeps running
+      // PAUSE — require NFC tap
+      final nfcSuccess = await NfcService.verifyAndWriteTag(context, widget.cycleId ?? '', 'paused');
+      if (!nfcSuccess) {
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Row(children: [
+              Icon(Icons.nfc, color: Colors.blue),
+              SizedBox(width: 8),
+              Text('NFC Required'),
+            ]),
+            content: const Text(
+              'Please hold your phone against the cycle\'s NFC tag to pause your ride.',
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+            ],
+          ),
+        );
+        return;
+      }
+      // Stop GPS tracking only, timer keeps running
       _syncTimer?.cancel();
       _positionStream?.cancel();
       setState(() {
@@ -392,7 +437,10 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
   }
 
   Future<void> _initGps() async {
-    await Geolocator.requestPermission();
+    if (!mounted) return;
+    final granted = await requestLocationPermission(context);
+    if (!granted) return;
+
     _positionStream = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 5),
     ).listen((Position position) {
@@ -426,6 +474,7 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
       }
       _currentPos = newPos;
       _lastPos = newPos;
+      if (pos.heading >= 0) _heading = pos.heading;
     });
     _syncLocationToDb(newPos);
     _mapController.move(newPos, _mapController.camera.zoom);
@@ -478,7 +527,10 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
                   mapController: _mapController,
                   options: MapOptions(initialCenter: _currentPos ?? const LatLng(17.4486, 78.3782), initialZoom: 16),
                   children: [
-                    TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'),
+                    TileLayer(
+                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.example.frontend',
+                    ),
                     if (_navigationRoute.isNotEmpty)
                       PolylineLayer(polylines: [
                         Polyline(
@@ -546,7 +598,7 @@ class _RideDetailsPageState extends State<RideDetailsPage> {
             decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
             child: Column(children: [
               ValueListenableBuilder<int>(
-                listenable: _elapsedSecondsNotifier,
+                valueListenable: _elapsedSecondsNotifier,
                 builder: (context, elapsed, _) {
                   return Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
                     _statItem('TIME', _getFormattedTime(elapsed)),

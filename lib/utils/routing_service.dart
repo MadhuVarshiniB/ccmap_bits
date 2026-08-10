@@ -1,28 +1,61 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
 class RoutingService {
-  /// Fetches a bicycle route between two points using OSRM
+  /// Fetches a bicycle route between two points using OSRM.
+  /// Uses HTTPS to comply with Android 9+ cleartext traffic restrictions.
+  /// Falls back to a straight-line route if OSRM is unreachable.
   static Future<List<LatLng>> getRoute(LatLng start, LatLng end) async {
     final url = Uri.parse(
-      'http://router.project-osrm.org/route/v1/bicycle/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?overview=full&geometries=polyline',
+      'https://router.project-osrm.org/route/v1/bicycle/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?overview=full&geometries=polyline',
     );
 
     try {
-      final response = await http.get(url);
+      final response = await http.get(
+        url,
+        headers: {'User-Agent': 'CCMapBikeShare/1.0'},
+      ).timeout(const Duration(seconds: 10));
+
+      debugPrint('OSRM status: ${response.statusCode}');
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        final String encodedPolyline = data['routes'][0]['geometry'];
-        return _decodePolyline(encodedPolyline);
+        if (data['code'] == 'Ok' && data['routes'] != null && (data['routes'] as List).isNotEmpty) {
+          final String encodedPolyline = data['routes'][0]['geometry'];
+          final points = _decodePolyline(encodedPolyline);
+          debugPrint('OSRM route decoded: ${points.length} points');
+          return points;
+        } else {
+          debugPrint('OSRM returned no route: ${data['code']}');
+        }
+      } else {
+        debugPrint('OSRM error body: ${response.body}');
       }
     } catch (e) {
-      print('Routing error: $e');
+      debugPrint('Routing error (falling back to straight line): $e');
     }
-    return [];
+
+    // Fallback: straight-line route with intermediate points
+    return _straightLineRoute(start, end);
   }
 
-  /// Decodes an encoded polyline string into a list of LatLng points
+  /// Generates a straight-line "route" as a fallback when OSRM is unavailable.
+  static List<LatLng> _straightLineRoute(LatLng start, LatLng end) {
+    const int steps = 10;
+    final List<LatLng> points = [];
+    for (int i = 0; i <= steps; i++) {
+      final t = i / steps;
+      points.add(LatLng(
+        start.latitude + (end.latitude - start.latitude) * t,
+        start.longitude + (end.longitude - start.longitude) * t,
+      ));
+    }
+    return points;
+  }
+
+  /// Decodes an encoded polyline string into a list of LatLng points.
   static List<LatLng> _decodePolyline(String encoded) {
     List<LatLng> points = [];
     int index = 0, len = encoded.length;

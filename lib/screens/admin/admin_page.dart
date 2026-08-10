@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:latlong2/latlong.dart';
 import '../../utils/nfc_service.dart';
 import '../../services/app_settings.dart';
+import 'map_location_picker.dart';
 
 class AdminPage extends StatefulWidget {
   const AdminPage({super.key});
@@ -61,6 +63,8 @@ class AdminSettingsTab extends StatefulWidget {
 
 class _AdminSettingsTabState extends State<AdminSettingsTab> {
   bool _isLoading = true;
+  String? _lastReadTag;
+  bool _isScanning = false;
 
   @override
   void initState() {
@@ -71,6 +75,46 @@ class _AdminSettingsTabState extends State<AdminSettingsTab> {
   Future<void> _ensureLoaded() async {
     await AppSettings.instance.load();
     if (mounted) setState(() => _isLoading = false);
+  }
+
+  List<Widget> _buildParsedTagInfo(String payload) {
+    // Example format: id:cycle-123,status:available
+    final parts = payload.split(',');
+    String cycleId = 'Unknown';
+    String status = 'Unknown';
+
+    for (var part in parts) {
+      final kv = part.split(':');
+      if (kv.length == 2) {
+        if (kv[0].trim() == 'id') cycleId = kv[1].trim();
+        if (kv[0].trim() == 'status') status = kv[1].trim();
+      }
+    }
+
+    Color statusColor = Colors.grey;
+    if (status == 'available') statusColor = Colors.green;
+    if (status == 'in_use' || status == 'unlocked') statusColor = Colors.blue;
+    if (status == 'locked') statusColor = Colors.red;
+
+    return [
+      Row(children: [
+        const Text('Cycle ID: ', style: TextStyle(fontWeight: FontWeight.bold)),
+        Text(cycleId),
+      ]),
+      const SizedBox(height: 4),
+      Row(children: [
+        const Text('Status: ', style: TextStyle(fontWeight: FontWeight.bold)),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: statusColor.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: statusColor),
+          ),
+          child: Text(status, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 12)),
+        ),
+      ]),
+    ];
   }
 
   @override
@@ -161,29 +205,69 @@ class _AdminSettingsTabState extends State<AdminSettingsTab> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.nfc),
-                      label: const Text('Test RFID Scanner (Read Tag)'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue.shade100,
-                        foregroundColor: Colors.blue.shade900,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                      onPressed: () async {
-                        final result = await NfcService.readTag(context);
-                        if (mounted && result != null) {
-                          showDialog(
-                            context: context,
-                            builder: (ctx) => AlertDialog(
-                              title: const Text('Tag Data'),
-                              content: Text(result),
-                              actions: [
-                                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))
-                              ],
+                    Card(
+                      elevation: 2,
+                      color: Colors.blue.shade50,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Text('Live RFID Scanner', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blue)),
+                            const SizedBox(height: 12),
+                            if (_isScanning)
+                              const Column(
+                                children: [
+                                  CircularProgressIndicator(),
+                                  SizedBox(height: 12),
+                                  Text('Waiting for NFC tag...', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+                                ],
+                              )
+                            else if (_lastReadTag != null)
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Tag Read Successfully', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                                    const Divider(),
+                                    Text('Raw Payload:', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                                    Text(_lastReadTag!, style: const TextStyle(fontFamily: 'monospace', fontSize: 14)),
+                                    const SizedBox(height: 8),
+                                    ..._buildParsedTagInfo(_lastReadTag!),
+                                  ],
+                                ),
+                              )
+                            else
+                              const Text('Click below to start scanning for a tag.', style: TextStyle(color: Colors.black54)),
+                            
+                            const SizedBox(height: 16),
+                            ElevatedButton.icon(
+                              icon: const Icon(Icons.nfc),
+                              label: Text(_isScanning ? 'Cancel Scan' : 'Start Scan'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _isScanning ? Colors.red.shade100 : Colors.blue.shade100,
+                                foregroundColor: _isScanning ? Colors.red.shade900 : Colors.blue.shade900,
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                              ),
+                              onPressed: () async {
+                                if (!_isScanning) {
+                                  setState(() { _isScanning = true; _lastReadTag = null; });
+                                  final result = await NfcService.readTag(context);
+                                  if (mounted) {
+                                    setState(() {
+                                      _isScanning = false;
+                                      _lastReadTag = result;
+                                    });
+                                  }
+                                }
+                              },
                             ),
-                          );
-                        }
-                      },
+                          ],
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 12),
                     ElevatedButton.icon(
@@ -272,31 +356,65 @@ class _ManageStationsTabState extends State<ManageStationsTab> {
     final latC = TextEditingController();
     final lngC = TextEditingController();
     final capC = TextEditingController(text: station?['total_capacity']?.toString() ?? '');
-    showDialog(context: context, builder: (ctx) => AlertDialog(
-      title: Text(isEdit ? 'Edit Station' : 'Add Station'),
-      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextField(controller: nameC, decoration: const InputDecoration(labelText: 'Station Name')),
-        if (!isEdit) ...[
-          TextField(controller: latC, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Latitude')),
-          TextField(controller: lngC, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Longitude')),
-        ],
-        TextField(controller: capC, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Total Capacity')),
-      ])),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-        ElevatedButton(onPressed: () async {
-          try {
-            final updates = <String, dynamic>{'name': nameC.text.trim(), 'total_capacity': int.tryParse(capC.text.trim()) ?? 0};
-            if (!isEdit) {
-              final lat = double.tryParse(latC.text.trim()); final lng = double.tryParse(lngC.text.trim());
-              if (lat == null || lng == null) throw 'Invalid Coordinates';
-              updates['location'] = 'POINT($lng $lat)'; updates['status'] = 'active';
-              await _supabase.from('stations').insert(updates);
-            } else { await _supabase.from('stations').update(updates).eq('id', station['id']); }
-            if (!mounted) return; Navigator.pop(ctx); _fetchStations();
-          } catch (e) { ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Error: $e'))); }
-        }, child: const Text('Save')),
-      ],
+    
+    showDialog(context: context, builder: (ctx) => StatefulBuilder(
+      builder: (context, setStateSB) {
+        return AlertDialog(
+          title: Text(isEdit ? 'Edit Station' : 'Add Station'),
+          content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextField(controller: nameC, decoration: const InputDecoration(labelText: 'Station Name')),
+            if (!isEdit) ...[
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.map),
+                label: const Text('Pick Location on Map'),
+                onPressed: () async {
+                  LatLng? initialLocation;
+                  if (latC.text.isNotEmpty && lngC.text.isNotEmpty) {
+                    final lat = double.tryParse(latC.text);
+                    final lng = double.tryParse(lngC.text);
+                    if (lat != null && lng != null) {
+                      initialLocation = LatLng(lat, lng);
+                    }
+                  }
+                  
+                  final selectedLocation = await Navigator.push<LatLng>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => MapLocationPicker(initialLocation: initialLocation),
+                    ),
+                  );
+                  
+                  if (selectedLocation != null) {
+                    setStateSB(() {
+                      latC.text = selectedLocation.latitude.toString();
+                      lngC.text = selectedLocation.longitude.toString();
+                    });
+                  }
+                },
+              ),
+              TextField(controller: latC, readOnly: true, decoration: const InputDecoration(labelText: 'Latitude')),
+              TextField(controller: lngC, readOnly: true, decoration: const InputDecoration(labelText: 'Longitude')),
+            ],
+            TextField(controller: capC, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Total Capacity')),
+          ])),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            ElevatedButton(onPressed: () async {
+              try {
+                final updates = <String, dynamic>{'name': nameC.text.trim(), 'total_capacity': int.tryParse(capC.text.trim()) ?? 0};
+                if (!isEdit) {
+                  final lat = double.tryParse(latC.text.trim()); final lng = double.tryParse(lngC.text.trim());
+                  if (lat == null || lng == null) throw 'Invalid Coordinates (Please pick a location)';
+                  updates['location'] = 'POINT($lng $lat)'; updates['status'] = 'active';
+                  await _supabase.from('stations').insert(updates);
+                } else { await _supabase.from('stations').update(updates).eq('id', station['id']); }
+                if (!mounted) return; Navigator.pop(ctx); _fetchStations();
+              } catch (e) { ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Error: $e'))); }
+            }, child: const Text('Save')),
+          ],
+        );
+      },
     ));
   }
 

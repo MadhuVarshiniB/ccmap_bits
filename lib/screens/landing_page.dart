@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -10,6 +12,7 @@ import 'ride_details_page.dart';
 import '../utils/routing_service.dart';
 import '../utils/nfc_service.dart';
 import '../services/app_settings.dart';
+import '../utils/location_permission_helper.dart';
 // import 'package:barcode_scanner/scanbot_barcode_sdk.dart';
 
 class LandingPage extends StatefulWidget {
@@ -28,7 +31,9 @@ class _LandingPageState extends State<LandingPage> {
   List<Map<String, dynamic>> _availableCycles = [];
   Map<String, int> _stationCycleCounts = {};
   LatLng? _currentLocation;
-  
+  double _heading = 0.0; // compass bearing in degrees
+  StreamSubscription<Position>? _headingStream;
+
   bool _isLoading = true;
   bool _isLoadingCycles = false;
   bool _isMapReady = false;
@@ -43,6 +48,26 @@ class _LandingPageState extends State<LandingPage> {
     super.initState();
     _initializeData();
     _checkAndCleanStaleRides();
+    _startHeadingStream();
+  }
+
+  @override
+  void dispose() {
+    _headingStream?.cancel();
+    super.dispose();
+  }
+
+  void _startHeadingStream() {
+    _headingStream = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 0,
+      ),
+    ).listen((pos) {
+      if (mounted && pos.heading >= 0) {
+        setState(() => _heading = pos.heading);
+      }
+    }, onError: (_) {});
   }
 
   Future<void> _initializeData() async {
@@ -195,20 +220,11 @@ class _LandingPageState extends State<LandingPage> {
   }
 
   Future<void> _fetchLocation() async {
-    try {
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      
-      if (permission == LocationPermission.deniedForever || permission == LocationPermission.denied) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Location permissions are denied.')),
-        );
-        return;
-      }
+    if (!mounted) return;
+    final granted = await requestLocationPermission(context);
+    if (!granted) return;
 
+    try {
       final pos = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
@@ -218,7 +234,7 @@ class _LandingPageState extends State<LandingPage> {
 
       if (!mounted) return;
       setState(() => _currentLocation = loc);
-      
+
       if (_isMapReady) {
         _mapController.move(loc, 14.0);
       }
@@ -226,7 +242,7 @@ class _LandingPageState extends State<LandingPage> {
       debugPrint('Location error: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to retrieve location')),
+        const SnackBar(content: Text('Failed to retrieve location. Make sure GPS is on.')),
       );
     }
   }
@@ -345,22 +361,23 @@ class _LandingPageState extends State<LandingPage> {
       markers.add(
         Marker(
           point: _currentLocation!,
-          width: 40,
-          height: 40,
-          child: Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.blue.withOpacity(0.25),
-            ),
-            child: Center(
-              child: Container(
-                width: 14,
-                height: 14,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
+          width: 52,
+          height: 52,
+          child: Transform.rotate(
+            // Convert degrees to radians; geolocator heading is clockwise from north
+            angle: _heading * math.pi / 180.0,
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.blue.withOpacity(0.18),
+                border: Border.all(color: Colors.blue.withOpacity(0.3), width: 1.5),
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.navigation,
                   color: Colors.blue,
-                  border: Border.all(color: Colors.white, width: 2),
-                  boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 4)],
+                  size: 28,
+                  shadows: [Shadow(color: Colors.black26, blurRadius: 4)],
                 ),
               ),
             ),
@@ -396,7 +413,10 @@ class _LandingPageState extends State<LandingPage> {
               },
             ),
             children: [
-              TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'),
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.example.frontend',
+              ),
               if (_currentRoute.isNotEmpty)
                 PolylineLayer(
                   polylines: <Polyline<Object>>[
@@ -411,16 +431,39 @@ class _LandingPageState extends State<LandingPage> {
             ],
           ),
           
-          // Location Center Button
+          // Recenter / My Location Button
           Positioned(
-            bottom: 340,
-            right: 16,
-            child: FloatingActionButton(
-              heroTag: 'my_location_fab',
-              backgroundColor: Colors.white,
-              mini: true,
-              onPressed: _fetchLocation,
-              child: const Icon(Icons.my_location, color: Colors.blue),
+            bottom: 348,
+            right: 12,
+            child: Material(
+              elevation: 4,
+              borderRadius: BorderRadius.circular(12),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () async {
+                  if (_currentLocation != null && _isMapReady) {
+                    // Zoom in considerably for navigation and align map to phone's heading
+                    _mapController.move(_currentLocation!, 17.0);
+                    // Rotate the map so that the direction you are facing is UP
+                    _mapController.rotate(360.0 - _heading);
+                  } else {
+                    await _fetchLocation();
+                  }
+                },
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    color: Theme.of(context).colorScheme.surface,
+                  ),
+                  child: Icon(
+                    Icons.my_location,
+                    color: Theme.of(context).colorScheme.primary,
+                    size: 22,
+                  ),
+                ),
+              ),
             ),
           ),
           
@@ -429,10 +472,10 @@ class _LandingPageState extends State<LandingPage> {
             bottom: 0, left: 0, right: 0,
             child: Container(
               padding: const EdgeInsets.all(24),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10)],
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10)],
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -443,11 +486,12 @@ class _LandingPageState extends State<LandingPage> {
                   
                   //Station Selection
                   DropdownButtonFormField<String>(
+                    isExpanded: true,
                     value: _selectedStartId,
-                    hint: const Text('Select Pickup Station'),
+                    hint: const Text('Select Pickup Station', overflow: TextOverflow.ellipsis),
                     items: _stations.map((s) => DropdownMenuItem(
                       value: s['id'].toString(),
-                      child: Text(s['name']),
+                      child: Text(s['name'], overflow: TextOverflow.ellipsis),
                     )).toList(),
                     onChanged: (val) {
                       setState(() => _selectedStartId = val);
@@ -463,18 +507,20 @@ class _LandingPageState extends State<LandingPage> {
                     children: [
                       Expanded(
                         child: DropdownButtonFormField<String>(
+                          isExpanded: true,
                           value: _selectedCycleId,
-                          hint: const Text('Select Available Cycle'),
+                          hint: const Text('Select Available Cycle', overflow: TextOverflow.ellipsis),
                           disabledHint: Text(
                             _selectedStartId == null 
                                 ? 'Pick a station first' 
                                 : _isLoadingCycles 
                                     ? 'Searching cycles...' 
                                     : 'No cycles available currently',
+                            overflow: TextOverflow.ellipsis,
                           ),
                           items: _availableCycles.isEmpty ? null : _availableCycles.map((c) => DropdownMenuItem(
                             value: c['id'].toString(),
-                            child: Text('${c['model_name']} (${c['battery_level']}%)'),
+                            child: Text('${c['model_name']} (${c['battery_level']}%)', overflow: TextOverflow.ellipsis),
                           )).toList(),
                           onChanged: (val) => setState(() => _selectedCycleId = val),
                           decoration: const InputDecoration(prefixIcon: Icon(Icons.pedal_bike, color: Colors.green)),
@@ -531,13 +577,14 @@ class _LandingPageState extends State<LandingPage> {
                   
                   //Destination Station
                   DropdownButtonFormField<String?>(
+                    isExpanded: true,
                     value: _selectedEndId,
-                    hint: const Text('Select Destination Station (Optional)'),
+                    hint: const Text('Select Destination Station (Optional)', overflow: TextOverflow.ellipsis),
                     items: [
-                      const DropdownMenuItem(value: null, child: Text('None (Explore)')),
+                      const DropdownMenuItem(value: null, child: Text('None (Explore)', overflow: TextOverflow.ellipsis)),
                       ..._stations.map((s) => DropdownMenuItem(
                         value: s['id'].toString(),
-                        child: Text(s['name']),
+                        child: Text(s['name'], overflow: TextOverflow.ellipsis),
                       )),
                     ],
                     onChanged: (val) {
@@ -553,9 +600,15 @@ class _LandingPageState extends State<LandingPage> {
                     padding: const EdgeInsets.all(12),
                     margin: const EdgeInsets.only(bottom: 16),
                     decoration: BoxDecoration(
-                      color: Colors.amber[50],
+                      color: Theme.of(context).brightness == Brightness.dark 
+                          ? Colors.amber.withOpacity(0.1) 
+                          : Colors.amber[50],
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.amber[200]!),
+                      border: Border.all(
+                        color: Theme.of(context).brightness == Brightness.dark 
+                            ? Colors.amber.withOpacity(0.5) 
+                            : Colors.amber[200]!
+                      ),
                     ),
                     child: Row(
                       children: [

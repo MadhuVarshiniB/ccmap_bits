@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:frontend/screens/auth/auth_service.dart';
 import 'package:frontend/screens/auth/otp_verification_page.dart';
+import 'package:frontend/main.dart';
+
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -92,11 +94,12 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
+        child: Stack(
+          children: [
+            SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 40),
@@ -241,7 +244,29 @@ class _LoginPageState extends State<LoginPage> {
                 ),
               ),
             ],
-          ),
+              ),
+            ),
+            Positioned(
+              top: 16,
+              right: 16,
+              child: ValueListenableBuilder<ThemeMode>(
+                valueListenable: themeNotifier,
+                builder: (context, mode, child) {
+                  final isDark = mode == ThemeMode.dark ||
+                      (mode == ThemeMode.system &&
+                          MediaQuery.of(context).platformBrightness ==
+                              Brightness.dark);
+                  return IconButton(
+                    icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode),
+                    onPressed: () {
+                      themeNotifier.value =
+                          isDark ? ThemeMode.light : ThemeMode.dark;
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );
